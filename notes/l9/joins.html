@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+<title>6.830: Lecture 10 (10/1/2014)</title>
+<link rel="stylesheet" href="/6.830/style.css" type="text/css" media="screen">
+<link rel="stylesheet" href="/6.830/6033.css" type="text/css">
+<script type="text/javascript">
+    function autofill_email() {
+        var spans = document.getElementsByTagName("span");
+        for (i = 0; i < spans.length; i++) {
+            if (spans[i].className != "email_autofill")
+                continue;
+            spans[i].innerHTML = spans[i].innerHTML.replace(/ at /, "@");
+        }
+    }
+
+    function page_onload() {
+        autofill_email();
+    }
+</script>
+
+
+</head>
+
+<body bgcolor="#ffffff" text="#000000" onLoad="page_onload()">
+<table width="900px" border="0" cellspacing="0"
+cellpadding="0">
+  <tbody>
+    <!-- Header row -->
+    <tr height="40">
+      <td colspan="3">
+	<table width="900px" height="40" border="0" cellspacing="0"
+	       cellpadding="0">
+	  <tbody>
+	    <tr> 
+	      <td width="531" bgcolor="#000000">
+		<div align="left" class="titleHead header">
+		  <a name="top"><b>6.830: Lecture 10 (10/1/2014)</b></a>
+		</div>
+	      </td>
+	      <td bgcolor="#8a0a0a" halign="center" valign="center" width="234">
+		<div align="center" class="titleHead header">
+		  <b>Fall 2014</b>
+		</div>
+	      </td> 
+	    </tr> 
+	  </tbody> 
+      </table>
+      </td> 
+</table>
+<div style="width: 900px">
+<div class="menubar">
+  <table width="900px" border=0 cellspacing=0 cellpadding=0 height=20>
+<tr class="header" bgcolor = "#8a0a0a" ><td bgcolor="black">
+  <a href="/6.830/">News</a>
+<td bgcolor="black">
+  <a href="/6.830/sched.html">Schedule</a>
+<td bgcolor="black">
+  <a href="/6.830/assign.html">Psets/Quizzes/Labs</a>
+<td bgcolor="black">
+  <a href="/6.830/notes.html">Class notes</a>
+<td bgcolor="black">
+  <a href="/6.830/syllabus.html">Syllabus</a>
+<td bgcolor="black">
+  <a href="/6.830/faq.html">FAQ</a>
+<!-- | <a href="http://groups.google.com/group/6830-2008?hl=en">Discussion Board</a> -->
+</tr>
+</table>
+</div>
+
+<!--
+
+
+-->
+<div class="content">
+
+<!--<h1>6.830: Lecture 10 (10/1/2014)</h1> -->
+
+In this lecture, we will discuss the problem of query optimization, focusing
+on the algorithms proposed in the classic "Selinger" paper.
+<p>
+
+Read the following papers:
+
+<ul>
+<li> <a name="selinger"> Patricia Selinger, M. Astrahan,
+D. Chamberlin, Raymond Lorie, and T. Price.</a>  <u>Access Path Selection
+in a Relational Database Management System</u>.  Proceedings of ACM
+SIGMOD, 1979.  Pages 22-34.  Red Book.  [<a href="http://doi.acm.org/10.1145/582095.582099">PDF</a>]
+
+<li> <i>Optionally</i>, you may also wish to look at:
+<a name="joinest"> Michael Mannino,
+Paichen Chu, and Thomas Sager.</a> <u>Statistical Profile Estimation in
+Database Systems</u>.  ACM Computing Surveys 20(3), 1988.  Pages
+191-221. [<a
+href="http://portal.acm.org/ft_gateway.cfm?id=62063&amp;type=pdf&amp;coll=GUIDE&amp;dl=GUIDE&amp;CFID=27807646&amp;CFTOKEN=7327138">PDF</a>]
+Requires an MIT IP for access.  
+This paper discusses
+many of the techniques that used to make query optimization and cost
+estimation practical in modern database systems.  Will will cover some
+of the ideas at a high level in class.
+</ul>
+
+
+As you read, think about and come to class prepared to answer the
+following questions:
+
+<p>
+<ul>
+
+<li> The Selinger paper claims to be 'optimal'.  Under what
+assumptions is this optimality true? Can you think of a situation in
+which Selinger will definitely be non-optimal?
+
+<li> Query optimization is highly dependent on the effectiveness of
+cost estimation.  The cost metrics that Selinger proposes are very
+simple; how would you make them more sophisticated?  What is the
+impact of more sophisticated cost metrics on the performance of a
+database system?
+
+</ul>
+
+
+<p>
+
+
+<div class="change">
+Last change: 9/18/2014.
+</div>
+<table cellspacing="0" cellpadding="6" width="900px">
+<tr bgcolor="#999999" height="20">
+<td style="padding-left: 10px; padding-top: 10px; padding-bottom: 10px;">
+
+<p><font style="font-size: 12px; font-family:sans-serif" >
+	Questions or comments regarding 6.830/6.814? Send e-mail to the 6.830/6.814 staff at <span class="email_autofill">6.830-staff at mit.edu</span>.
+</font></p> 
+</table>
+
+</div>
+</body>
+</html>

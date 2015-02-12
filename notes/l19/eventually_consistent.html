@@ -1,0 +1,287 @@
+<!doctype html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="generator" content="Movable Type Pro 4.35-en" />
+    <link rel="shortcut icon" href="/favicon.ico" >    
+    <link rel="stylesheet" href="/stylesheets/base_theme.css" type="text/css" />
+    <link rel="stylesheet" href="/stylesheets/styles.css" type="text/css" />
+    <link rel="alternate" type="application/atom+xml" title="Atom" href="/atom.xml" />
+    <link rel="alternate" type="application/rss+xml" title="RSS" href="/index.xml" />
+    <title>Eventually Consistent - Revisited - All Things Distributed</title>
+	<script type="text/javascript">
+
+	  var _gaq = _gaq || [];
+	  _gaq.push(['_setAccount', 'UA-967083-1']);
+	  _gaq.push(['_trackPageview']);
+
+	  (function() {
+	    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+	  })();
+
+	</script>
+</head>
+<body class="mt-main-index layout-wt">
+    <div id="container">
+        <div id="container-inner">
+            <div id="header">
+                <div id="header-inner">
+                    <div id="header-content">
+                        <h1 id="header-name"><a href="/" accesskey="1">All Things Distributed</a></h1>
+                        <h2 id="header-description">Werner Vogels' weblog on building scalable and robust distributed systems.</h2>
+                    </div>
+                </div>
+            </div>
+            <div id="content">
+                <div id="content-inner">
+                    <div id="alpha">
+                        <div id="alpha-inner">
+		  					<div class="entry-asset asset">
+		<div class="asset-header">
+	    	<h2 class="asset-name">
+				<a href="/2008/12/eventually_consistent.html">Eventually Consistent - Revisited</a></h2>
+	    		<div class="asset-meta">
+					<span class="byline">
+	    				By Werner Vogels on 22 December 2008 04:15 PM
+					</span>
+					| <a class="permalink" href="/2008/12/eventually_consistent.html">Permalink</a>
+					| <a href="/2008/12/eventually_consistent.html#comments">Comments (<script type='text/javascript' src='http://disqus.com/forums/allthingsdistributed/get_num_replies_for_entry.js?url=http://www.allthingsdistributed.com/2008/12/eventually_consistent.html'></script><noscript>View</noscript>)</a>
+				</div>
+		</div>
+		<div class="asset-content">
+	    	<div class="asset-body">
+				<p>
+<i>I wrote a <a href="http://www.allthingsdistributed.com/2007/12/eventually_consistent.html">first version of this posting</a> on consistency models about a year ago, but I was never happy with it as it was written in haste and the topic is important enough to receive a more thorough treatment. <a href="http://queue.acm.org/issuedetail.cfm?issue=1466443">ACM Queue</a> asked me to revise it for use in their magazine and I took the opportunity to improve the article. This is that new version.</i>
+</p><p>
+<b>Eventually Consistent - Building reliable distributed systems at a worldwide scale demands trade-offs between consistency and availability. </b>
+</p>
+<p>At the foundation of Amazon's cloud computing are infrastructure services such as Amazon's S3 (Simple Storage Service), SimpleDB, and EC2 (Elastic Compute Cloud) that provide the resources for constructing Internet-scale computing platforms and a great variety of applications. The requirements placed on these infrastructure services are very strict; they need to score high marks in the areas of security, scalability, availability, performance, and cost effectiveness, and they need to meet these requirements while serving millions of customers around the globe, continuously. </p><p>
+  Under the covers these services are massive distributed systems that operate on a worldwide scale. This scale creates additional challenges, because when a system processes trillions and trillions of requests, events that normally have a low probability of occurrence are now guaranteed to happen and need to be accounted for up front in the design and architecture of the system. Given the worldwide scope of these systems, we use replication techniques ubiquitously to guarantee consistent performance and high availability. Although replication brings us closer to our goals, it cannot achieve them in a perfectly transparent manner; under a number of conditions the customers of these services will be confronted with the consequences of using replication techniques inside the services.</p><p>
+One of the ways in which this manifests itself is in the type of data consistency that is provided, particularly when the underlying distributed system provides an eventual consistency model for data replication. When designing these large-scale systems at Amazon, we use a set of guiding principles and abstractions related to large-scale data replication and focus on the trade-offs between high availability and data consistency. In this article I present some of the relevant background that has informed our approach to delivering reliable distributed systems that need to operate on a global scale. An <a href="http://www.allthingsdistributed.com/2007/12/eventually_consistent.html">earlier version of this text</a> appeared as a posting on the All Things Distributed weblog in December 2007 and was greatly improved with the help of its readers.</p>
+ 
+<p>
+  <b>Historical Perspective </b>
+</p>
+  <p>
+  In an ideal world there would be only one consistency model: when an update is made all observers would see that update. The first time this surfaced as difficult to achieve was in the database systems of the late '70s. The best "period piece" on this topic is "Notes on Distributed Databases" by <a href="http://acmqueue.com/modules.php?name=Content&pa=showpage&pid=233">Bruce Lindsay et al</a>. <sup>5</sup> It lays out the fundamental principles for database replication and discusses a number of techniques that deal with achieving consistency. Many of these techniques try to achieve distribution transparency&mdash;that is, to the user of the system it appears as if there is only one system instead of a number of collaborating systems. Many systems during this time took the approach that it was better to fail the complete system than to break this transparency.<sup>2</sup> </p><p>
+  In the mid-'90s, with the rise of larger Internet systems, these practices were revisited. At that time people began to consider the idea that availability was perhaps the most important property of these systems, but they were struggling with what it should be traded off against. <a href="http://www.cs.berkeley.edu/~brewer/">Eric Brewer</a>, systems professor at the University of California, Berkeley, and at that time head of Inktomi, brought the different trade-offs together in a <a href="http://www.cs.berkeley.edu/~brewer/cs262b-2004/PODC-keynote.pdf">keynote address to the PODC</a> (Principles of Distributed Computing) conference in 2000.<sup>1</sup> He presented the CAP theorem, which states that of three properties of shared-data systems&mdash;data consistency, system availability, and tolerance to network partition&mdash;only two can be achieved at any given time. A more formal confirmation can be found in a 2002 paper by <a href="http://portal.acm.org/citation.cfm?doid=564585.564601">Seth Gilbert and Nancy Lynch</a>.<sup>4</sup> </p><p>
+
+  A system that is not tolerant to network partitions can achieve data consistency and availability, and often does so by using transaction protocols. To make this work, client and storage systems must be part of the same environment; they fail as a whole under certain scenarios, and as such, clients cannot observe partitions. An important observation is that in larger distributed-scale systems, network partitions are a given; therefore, consistency and availability cannot be achieved at the same time. This means that there are two choices on what to drop: relaxing consistency will allow the system to remain highly available under the partitionable conditions, whereas making consistency a priority means that under certain conditions the system will not be available. </p><p>
+  Both options require the client developer to be aware of what the system is offering. If the system emphasizes consistency, the developer has to deal with the fact that the system may not be available to take, for example, a write. If this write fails because of system unavailability, then the developer will have to deal with what to do with the data to be written. If the system emphasizes availability, it may always accept the write, but under certain conditions a read will not reflect the result of a recently completed write. The developer then has to decide whether the client requires access to the absolute latest update all the time. There is a range of applications that can handle slightly stale data, and they are served well under this model. </p><p>
+  In principle the consistency property of transaction systems as defined in the <a href="http://en.wikipedia.org/wiki/ACID">ACID</a> properties (atomicity, consistency, isolation, durability) is a different kind of consistency guarantee. In ACID, consistency relates to the guarantee that when a transaction is finished the database is in a consistent state; for example, when transferring money from one account to another the total amount held in both accounts should not change. In ACID-based systems, this kind of consistency is often the responsibility of the developer writing the transaction but can be assisted by the database managing integrity constraints. </p>
+<p>  <b>Consistency&mdash;Client and Server</b> </p>
+  <p>
+  There are two ways of looking at consistency. One is from the developer/client point of view: how they observe data updates. The second way is from the server side: how updates flow through the system and what guarantees systems can give with respect to updates. </p>
+
+  <p><strong>Client-side Consistency </strong></p>
+  <p>
+  The client side has these components: </p>
+  <ul>
+    <li> <strong>A storage system.</strong> For the moment we'll treat it as a black box, but one should assume that under the covers it is something of large scale and highly distributed, and that it is built to guarantee durability and availability. </li>
+    <li> <strong>Process A.</strong> This is a process that writes to and reads from the storage system. </li>
+
+    <li> <strong>Processes B and C.</strong> These two processes are independent of process A and write to and read from the storage system. It is irrelevant whether these are really processes or threads within the same process; what is important is that they are independent and need to communicate to share information. <br />
+    Client-side consistency has to do with how and when observers (in this case the processes A, B, or C) see updates made to a data object in the storage systems. In the following examples illustrating the different types of consistency, process A has made an update to a data object:</li>
+    <li> <strong>Strong consistency.</strong> After the update completes, any subsequent access (by A, B, or C) will return the updated value. </li>
+    <li> <strong>Weak consistency.</strong> The system does not guarantee that subsequent accesses will return the updated value. A number of conditions need to be met before the value will be returned. The period between the update and the moment when it is guaranteed that any observer will always see the updated value is dubbed the <em>inconsistency window</em>.</li>
+<li><strong>Eventual consistency.</strong> This is a specific form of weak consistency; the storage system guarantees that if no new updates are made to the object, eventually all accesses will return the last updated value. If no failures occur, the maximum size of the inconsistency window can be determined based on factors such as communication delays, the load on the system, and the number of replicas involved in the replication scheme. The most popular system that implements eventual consistency is DNS (Domain Name System). Updates to a name are distributed according to a configured pattern and in combination with time-controlled caches; eventually, all clients will see the update. </li>
+  </ul>
+  <p>
+  The eventual consistency model has a number of variations that are important to consider: </p>
+  <ul>
+    <li><strong>Causal consistency.</strong> If process A has communicated to process B that it has updated a data item, a subsequent access by process B will return the updated value, and a write is guaranteed to supersede the earlier write. Access by process C that has no causal relationship to process A is subject to the normal eventual consistency rules. </li>
+
+    <li> <strong>Read-your-writes consistency.</strong> This is an important model where process A, after it has updated a data item, always accesses the updated value and will never see an older value. This is a special case of the causal consistency model. </li>
+    <li> <strong>Session consistency.</strong> This is a practical version of the previous model, where a process accesses the storage system in the context of a session. As long as the session exists, the system guarantees read-your-writes consistency. If the session terminates because of a certain failure scenario, a new session needs to be created and the guarantees do not overlap the sessions. </li>
+    <li> <strong>Monotonic read consistency.</strong> If a process has seen a particular value for the object, any subsequent accesses will never return any previous values. </li>
+
+    <li> <strong>Monotonic write consistency.</strong> In this case the system guarantees to serialize the writes by the same process. Systems that do not guarantee this level of consistency are notoriously hard to program. </li>
+  </ul>
+  <p>
+  A number of these properties can be combined. For example, one can get monotonic reads combined with session-level consistency. From a practical point of view these two properties (monotonic reads and read-your-writes) are most desirable in an eventual consistency system, but not always required. These two properties make it simpler for developers to build applications, while allowing the storage system to relax consistency and provide high availability.</p>
+  <p>
+  As you can see from these variations, quite a few different scenarios are possible. It depends on the particular applications whether or not one can deal with the consequences. </p>
+
+  <p>
+  Eventual consistency is not some esoteric property of extreme distributed systems. Many modern RDBMSs (relational database management systems) that provide primary-backup reliability implement their replication techniques in both synchronous and asynchronous modes. In synchronous mode the replica update is part of the transaction. In asynchronous mode the updates arrive at the backup in a delayed manner, often through log shipping. In the latter mode if the primary fails before the logs are shipped, reading from the promoted backup will produce old, inconsistent values. Also to support better scalable read performance, RDBMSs have started to provide the ability to read from the backup, which is a classical case of providing eventual consistency guarantees in which the inconsistency windows depend on the periodicity of the log shipping. </p>
+  <b>Server-side Consistency</b>
+  <p>
+  On the server side we need to take a deeper look at how updates flow through the system to understand what drives the different modes that the developer who uses the system can experience. Let's establish a few definitions before getting started: </p><p>
+  N = the number of nodes that store replicas of the data </p><p>
+  W = the number of replicas that need to acknowledge the receipt of the update before the update completes </p><p>
+
+  R = the number of replicas that are contacted when a data object is accessed through a read operation </p><p>
+  If W+R &gt; N, then the write set and the read set always overlap and one can guarantee strong consistency. In the primary-backup RDBMS scenario, which implements synchronous replication, N=2, W=2, and R=1. No matter from which replica the client reads, it will always get a consistent answer. In asynchronous replication with reading from the backup enabled, N=2, W=1, and R=1. In this case R+W=N, and consistency cannot be guaranteed. </p><p>
+  The problems with these configurations, which are basic quorum protocols, is that when the system cannot write to W nodes because of failures, the write operation has to fail, marking the unavailability of the system. With N=3 and W=3 and only two nodes available, the system will have to fail the write. </p><p>
+  In distributed-storage systems that need to provide high performance and high availability, the number of replicas is in general higher than two. Systems that focus solely on fault tolerance often use N=3 (with W=2 and R=2 configurations). Systems that need to serve very high read loads often replicate their data beyond what is required for fault tolerance; N can be tens or even hundreds of nodes, with R configured to 1 such that a single read will return a result. Systems that are concerned with consistency are set to W=N for updates, which may decrease the probability of the write succeeding. A common configuration for these systems that are concerned about fault tolerance but not consistency is to run with W=1 to get minimal durability of the update and then rely on a lazy (epidemic) technique to update the other replicas. </p><p>
+  How to configure N, W, and R depends on what the common case is and which performance path needs to be optimized. In R=1 and N=W we optimize for the read case, and in W=1 and R=N we optimize for a very fast write. Of course in the latter case, durability is not guaranteed in the presence of failures, and if W &lt; (N+1)/2, there is the possibility of conflicting writes when the write sets do not overlap. </p><p>
+
+  Weak/eventual consistency arises when W+R &lt;= N, meaning that there is a possibility that the read and write set will not overlap. If this is a deliberate configuration and not based on a failure case, then it hardly makes sense to set R to anything but 1. This happens in two very common cases: the first is the massive replication for read scaling mentioned earlier; the second is where data access is more complicated. In a simple key-value model it is easy to compare versions to determine the latest value written to the system, but in systems that return sets of objects it is more difficult to determine what the correct latest set should be. In most of these systems where the write set is smaller than the replica set, a mechanism is in place that applies the updates in a lazy manner to the remaining nodes in the replica's set. The period until all replicas have been updated is the inconsistency window discussed before. If W+R &lt;= N, then the system is vulnerable to reading from nodes that have not yet received the updates. </p><p>
+  Whether or not read-your-writes, session, and monotonic consistency can be achieved depends in general on the "stickiness" of clients to the server that executes the distributed protocol for them. If this is the same server every time, then it is relatively easy to guarantee read-your-writes and monotonic reads. This makes it slightly harder to manage load balancing and fault tolerance, but it is a simple solution. Using sessions, which are sticky, makes this explicit and provides an exposure level that clients can reason about. </p><p>
+  Sometimes the client implements read-your-writes and monotonic reads. By adding versions on writes, the client discards reads of values with versions that precede the last-seen version. </p><p>
+  Partitions happen when some nodes in the system cannot reach other nodes, but both sets are reachable by groups of clients. If you use a classical majority quorum approach, then the partition that has W nodes of the replica set can continue to take updates while the other partition becomes unavailable. The same is true for the read set. Given that these two sets overlap, by definition the minority set becomes unavailable. Partitions don't happen frequently, but they do occur between data centers, as well as inside data centers. </p><p>
+  In some applications the unavailability of any of the partitions is unacceptable, and it is important that the clients that can reach that partition make progress. In that case both sides assign a new set of storage nodes to receive the data, and a merge operation is executed when the partition heals. For example, within Amazon the shopping cart uses such a write-always system; in the case of partition, a customer can continue to put items in the cart even if the original cart lives on the other partitions. The cart application assists the storage system with merging the carts once the partition has healed.</p>
+
+  <b>Amazon's Dynamo </b>
+  <p>
+  A system that has brought all of these properties under explicit control of the application architecture is <a href="http://www.allthingsdistributed.com/2007/10/amazons_dynamo.html">Amazon's Dynamo</a>, a key-value storage system that is used internally in many services that make up the Amazon e-commerce platform, as well as Amazon's Web Services. One of the design goals of Dynamo is to allow the application service owner who creates an instance of the Dynamo storage system&mdash;which commonly spans multiple data centers&mdash;to make the trade-offs between consistency, durability, availability, and performance at a certain cost point.<sup>3</sup></p>
+  <b>Summary </b>
+  <p>
+  Data inconsistency in large-scale reliable distributed systems has to be tolerated for two reasons: improving read and write performance under highly concurrent conditions; and handling partition cases where a majority model would render part of the system unavailable even though the nodes are up and running. </p><p>
+
+  Whether or not inconsistencies are acceptable depends on the client application. In all cases the developer needs to be aware that consistency guarantees are provided by the storage systems and need to be taken into account when developing applications. There are a number of practical improvements to the eventual consistency model, such as session-level consistency and monotonic reads, which provide better tools for the developer. Many times the application is capable of handling the eventual consistency guarantees of the storage system without any problem. A specific popular case is a Web site in which we can have the notion of user-perceived consistency. In this scenario the inconsistency window needs to be smaller than the time expected for the customer to return for the next page load. This allows for updates to propagate through the system before the next read is expected. </p><p>
+  The goal of this article is to raise awareness about the complexity of engineering systems that need to operate at a global scale and that require careful tuning to ensure that they can deliver the durability, availability, and performance that their applications require. One of the tools the system designer has is the length of the consistency window, during which the clients of the systems are possibly exposed to the realities of large-scale systems engineering. </p>
+  <b>References</b>
+  <ol>
+    <li> Brewer, E. A. 2000. <a href="http://www.cs.berkeley.edu/~brewer/cs262b-2004/PODC-keynote.pdf">Towards robust distributed systems (abstract)</a>. In <em>Proceedings of the 19th Annual ACM Symposium on Principles of Distributed Computing</em> (July 16-19, Portland, Oregon): 7</li>
+
+    <li> <a href="http://acmqueue.com/modules.php?name=Content&pa=showpage&pid=233">A Conversation with Bruce Lindsay.</a> 2004. ACM Queue 2(8): 22-33.</li>
+    <li> DeCandia, G., Hastorun, D., Jampani, M., Kakulapati, G., Lakshman, A., Pilchin, A., Sivasubramanian, S., Vosshall, P., Vogels, W. 2007. <a href="http://www.allthingsdistributed.com/2007/10/amazons_dynamo.html">Dynamo: Amazon's highly available key-value store</a>. In Proceedings of the 21st ACM <em>Symposium on Operating Systems Principles</em> (Stevenson, Washington, October).</li>
+    <li> Gilbert , S., Lynch, N. 2002. <a href="http://portal.acm.org/citation.cfm?doid=564585.564601">Brewer's conjecture and the feasibility of consistent, available, partition-tolerant Web services</a>. ACM SIGACT News 33(2).</li>
+    <li> Lindsay, B. G., Selinger, P. G., et al. 1980. Notes on distributed databases. In <em>Distributed Data Bases, ed. I</em>. W. Draffan and F. Poole, 247-284. Cambridge: Cambridge University Press. Also available as IBM Research Report RJ2517, San Jose, California (July 1979).</li>
+
+  </ol>
+
+			</div>
+		</div>
+		<div class="asset-footer"></div>
+	</div>
+	<h2 class="comments-header"> Comments</h2>
+	<div id="comments"></div>
+	<div class="comments-content">
+		<div id="disqus_thread"></div>
+		<script type="text/javascript">
+		    var disqus_shortname = 'allthingsdistributed'; // required: replace example with your forum shortname
+		    var disqus_identifier = 'www.allthingsdistributed.com/2008/12/eventually_consistent.html';
+		    var disqus_url = 'http://www.allthingsdistributed.com/2008/12/eventually_consistent.html';
+
+		    /* * * DON'T EDIT BELOW THIS LINE * * */
+		    (function() {
+		        var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		        dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		        (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+		    })();
+		</script>
+		<noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+		<a href="http://disqus.com" class="dsq-brlink">blog comments powered by <span class="logo-disqus">Disqus</span></a>
+	</div>
+
+						</div>
+					</div>
+	    			<div id="beta">
+	    				<div id="beta-inner">
+	 						<div class="widget-search widget">
+								<div class="widget-content">
+									<img src="/images/wvlogo.jpg">
+								</div>
+							</div>
+							<div class="widget-search widget"> 
+								<h3 class="widget-header">Contact Info</h3> 
+								<div class="widget-content">
+									<B>Werner Vogels</B><br>
+									<I>CTO - Amazon.com</I><br><br>
+									<img src="/images/email.jpg"><br>
+								</div>
+							</div>
+							<div class="widget-search widget"> 
+								<h3 class="widget-header">Other places</h3> 
+								<div class="widget-content">
+	                				Follow werner on <a href="http://www.twitter.com/werner">twitter</a> if you want to know what he is current reading or thinking about.<br>
+	                At <a href="http://werner.ly">werner.ly</a> he posts material that doesn't belong on this blog or on twitter.<br>
+								</div>
+							</div>
+							<div class="widget-search widget">
+								<h3 class="widget-header">Syndication</h3>
+								<div class ="widget-content">
+									<img src="/images/feed.gif" width="9" height="9" />
+				 						Subscribe to this weblog's<br />
+				<a href="/atom.xml">atom feed</a>
+				 or <a href="/index.xml">rss feed</a><br />
+								</div>
+							</div>
+							<div class="widget-search widget">
+								<h3 class="widget-header">Archives</h3>
+								<div class ="widget-content">
+							 		<a href="/archives.html">All postings</a>
+								</div>
+							</div>
+	        				<div class="widget-archives widget">
+	            				<h3 class="widget-header">Recent Entries</h3>
+	            				<div class="widget-content">
+	                				<ul class="widget-list">
+										
+	                    				<li class="widget-list-item"><a href="/2012/02/amazon-s3-price-drop.html">Driving Storage Costs Down for AWS Customers</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2012/01/The-AWS-Storage-Gateway.html">Expanding the Cloud - The AWS Storage Gateway</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2012/01/amazon-dynamodb.html">Amazon DynamoDB – a Fast and Scalable NoSQL Database Service Designed for Internet Scale Applications</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2012/01/countdown-aws-what-next.html">Countdown to What is Next in AWS</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/12/aws-south-america-sao-paolo-region.html">Expanding the Cloud – Introducing the AWS South America (Sao Paulo) Region</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/08/amazon-elasticache.html">Expanding the Cloud - Introducing Amazon ElastiCache</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/08/AWS-jobs-senior-leader-database-services.html">Job Openings in AWS - Senior Leader in Database Services</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/08/amazon-emr-on-ec2-spot-instances.html">Driving down the cost of Big-Data analytics</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/08/Jekyll-amazon-s3.html">No Server Required - Jekyll & Amazon S3</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/08/aws_govcloud_region.html">Expanding the Cloud - The AWS GovCloud (US) Region</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/07/spot_instances_az_pricing.html">Spot Instances - Increased Control</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/07/aws_importexport_ebs.html">Expanding the Cloud - AWS Import/Export Support for Amazon EBS</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/07/apac_summer_tour_2011.html">APAC Summer Tour</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/06/aws_bandwith_price_drop_july11.html">Driving Bandwidth Cost Down for AWS Customers.</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/05/aws_ipv6.html">New Route 53 and ELB features: IPv6, Zone Apex, WRR and more</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/04/the_amazoncom_2010_shareholder.html">The Amazon.com 2010 Shareholder Letter Focusses on Technology</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/03/mendeley_api_binary_battle.html">Mashing Up Science - The Mendeley API Binary Battle</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/03/amazon_cloud_drive.html">Music to my Ears - Introducing Amazon Cloud Drive and Amazon Cloud Player</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/03/aws_at_the_next_web_hackaton.html">Hacking with AWS at The Next Web Hackaton</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/03/aws_asia_pacific_tokyo_region.html">Expanding the Cloud - Introducing the AWS Asia Pacific (Tokyo) Region</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/02/from_the_archives_-_gapingvoid.html">From the Archives - Gapingvoid's Nobody Cares</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/02/aws_cloudformation.html">Simplifying IT - Create Your Application with AWS CloudFormation</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/02/weblog_in_amazon_s3.html">Free at Last - A Fully Self-Sustained Blog Running in Amazon S3</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/02/website_amazon_s3.html">New AWS feature: Run your website from Amazon S3</a></li>
+										
+	                    				<li class="widget-list-item"><a href="/2011/01/it_is_not_the_critic_who_counts.html">It is not the critic who counts ...</a></li>
+										
+	                				</ul>
+	            				</div>
+	        				</div>
+	    				</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<div id="footer">
+            <div id="footer-inner">
+                <div id="footer-content">
+                    <div class="widget-powered widget">
+                        <div class="widget-content">
+                            Generated by <a href="http://Jekyllrb.com/">Jekyll</a> and served out of <a href="http://aws.amazon.com/s3">Amazon S3</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+	</div>
+</div>
+</body>
+</html>

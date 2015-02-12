@@ -1,0 +1,409 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>  
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8">
+<title>6.830 Lab 5: Rollback and Recovery</title>
+<link type="text/css" rel="stylesheet" href="http://db.csail.mit.edu/6.830/style.css">
+<script type="text/javascript" src="http://db.csail.mit.edu/6.830/assignments/shjs/sh_main.js"></script>
+<script type="text/javascript" src="http://db.csail.mit.edu/6.830/assignments/shjs/sh_java.js"></script>
+<script type="text/javascript" src="http://db.csail.mit.edu/6.830/assignments/shjs/sh_sql.js"></script>
+<link type="text/css" rel="stylesheet" href="http://db.csail.mit.edu/6.830/style.css">
+
+</head>
+
+<body onload="sh_highlightDocument();">
+
+<h1>6.830 Lab 5: Rollback and Recovery</h1>
+
+<b>Assigned: May 2 2012</b><br>
+<b>Due: May 17 2012</b>
+
+<h2>0. Introduction</h2>
+
+<p>
+
+In this lab you will implement log-based rollback for aborts and
+log-based crash recovery. We supply you with the code that defines the
+log format and appends records to a log file at appropriate times
+during transactions. You will implement rollback and recovery using
+the contents of the log file.
+
+<p>
+The logging code we provide generates records intended for
+physical whole-page undo and
+redo. When a page is first read in, our code remembers the original
+content of the page as a before-image. When a transaction updates a
+page, the corresponding log record contains that remembered
+before-image as well as the content of the page after modification as
+an after-image. You'll use the before-image to roll back during aborts
+and to undo loser transactions during recovery, and the after-image to
+redo winners during recovery.
+
+<p>
+
+We are able to get away with doing whole-page physical UNDO (while
+ARIES must do logical UNDO) because we are doing page level locking
+and because we have no indices which may have a different structure at
+UNDO time than when the log was initially written.  The reason
+page-level locking simplifies things is that if a transaction modified
+a page, it must have had an exclusive lock on it, which means no other
+transaction was concurrently modifying it, so we can UNDO changes to
+it by just overwriting the whole page.
+
+
+<p>
+Your BufferPool already implements abort by deleting dirty pages, and
+pretends to implement atomic commit by forcing dirty pages to disk
+only at commit time. Logging allows more flexible buffer management
+(STEAL and NO-FORCE), and our test code calls 
+<code>BufferPool.flushAllPages()</code>
+at certain points in order to exercise that flexibility.
+
+<h2>1. Getting started </h2>
+
+You should begin with the code you submitted for Lab 4 (if you did not
+submit code for Lab 4, or your solution didn't work properly, contact us to
+discuss options.)
+
+<p>
+
+You'll need to modify some of your existing source and add a few new files. 
+Here's what to do:
+
+<ul>
+
+<li>Make a backup of your Lab 4 solution by typing :
+<pre>$ tar -cvzf 6.830-lab4-submitted.tar.gz 6.830-lab4</pre>
+
+<li>Rename your lab directory to 6.830-lab5
+<pre>
+$ mv 6.830-lab4 6.830-lab5
+</pre>
+
+<li>Change to the directory that contains your top-level simpledb
+code:
+<pre>
+$ cd 6.830-lab5
+</pre>
+
+<li>
+
+Download the new tests and skeleton code for Lab 5 from <a
+href="http://db.csail.mit.edu/6.830/assignments/6.830-lab5-supplement.tar.gz">
+http://db.csail.mit.edu/6.830/assignments/6.830-lab5-supplement.tar.gz</a>:
+<pre>
+$ wget http://db.csail.mit.edu/6.830/assignments/6.830-lab5-supplement.tar.gz
+</pre>
+
+<li>Extract the new files for Lab 5 by typing:
+
+<pre>tar -xvzf 6.830-lab5-supplement.tar.gz</pre>
+
+This will not overwrite any existing files, but will just add a new test file 
+to the <code>test/simpledb/systemtest</code> directory.
+<p>  
+<li> Now make the following changes to your existing code:
+
+<ol>
+
+<li><p>
+  
+Insert the following lines into <code>BufferPool.flushPage()</code> before
+your call to <code>writePage(p)</code>, where <code>p</code> is a reference
+to the page being written:
+
+<pre>
+        // append an update record to the log, with 
+        // a before-image and after-image.
+        TransactionId dirtier = p.isDirty();
+        if (dirtier != null){
+          Database.getLogFile().logWrite(dirtier, p.getBeforeImage(), p);
+          Database.getLogFile().force();
+        }
+</pre>
+  This causes the logging system to write an update to the log.  
+We force the log to ensure
+  the log record is on disk before the page is written to disk.
+<p>
+  
+<li>
+Your <code>BufferPool.transactionComplete()</code> calls <code>flushPage()
+</code> for each page that a committed transaction dirtied. For each such
+page, add a call to <code>p.setBeforeImage()</code> after you have flushed
+the page:
+    
+<pre>
+        // use current page contents as the before-image
+        // for the next transaction that modifies this page.
+        p.setBeforeImage();
+</pre>
+
+  After an update is committed, a page's before-image needs to be updated
+  so that later transactions that abort rollback to this committed version
+  of the page.
+(Note: We can't just call <code>setBeforeImage()</code> in 
+<code>flushPage()</code>, since <code>flushPage()</code>
+might be called even if a transaction isn't committing. Our test case actually 
+does that! If you implemented
+  <code>transactionComplete()</code> by calling <code>flushPages()</code> 
+instead, you may need to pass an additional
+  argument to <code>flushPages()</code> to tell it whether the flush is being 
+  done for a committing transaction or not. However, we strongly suggest 
+in this case you simply rewrite
+<code>transactionComplete()</code> to use <code>flushPage()</code>.)
+<p>
+
+</ol>
+
+<li>After you have made these changes, do a clean build (<tt>ant clean; ant
+</tt> from the command line, or a "Clean" from the "Project" menu in Eclipse.)
+<p>
+<li>At this point your code should pass the first three sub-tests
+of the <code>LogTest</code> systemtest, and fail the rest:
+<pre>
+% ant runsystest -Dtest=LogTest
+    ...
+    [junit] Running simpledb.systemtest.LogTest
+    [junit] Testsuite: simpledb.systemtest.LogTest
+    [junit] Tests run: 10, Failures: 0, Errors: 7, Time elapsed: 0.42 sec
+    [junit] Tests run: 10, Failures: 0, Errors: 7, Time elapsed: 0.42 sec
+    [junit] 
+    [junit] Testcase: PatchTest took 0.057 sec
+    [junit] Testcase: TestFlushAll took 0.022 sec
+    [junit] Testcase: TestCommitCrash took 0.018 sec
+    [junit] Testcase: TestAbort took 0.03 sec
+    [junit]     Caused an ERROR
+    [junit] LogTest: tuple present but shouldn't be
+    ...
+</pre>
+
+<li>If you don't see the above output from <tt>ant runsystest -Dtest=LogTest</tt>,
+something has gone wrong with the un-tarring of
+<tt>6.830-lab5-supplement.tar.gz</tt> or the changes you made are somehow
+incompatible with your existing code. You should figure out and fix
+the problem before proceeding; ask us for help if necessary.
+  
+</ul>
+
+<h2>2. Rollback</h2>
+
+Read the comments in <code>LogFile.java</code> for a description of 
+the log file format.
+You should see in <code>LogFile.java</code> a set of functions, such as
+<code>logCommit()</code>, that generate each kind of log record and append
+it to the log.
+
+<p>
+Your first job is to implement the <code>rollback()</code> function in
+<code>LogFile.java</code>. This function is called when a transaction aborts,
+before the transaction releases its locks. Its job is to un-do any
+changes the transaction may have made to the database.
+
+<p> Your <code>rollback()</code> should read the log file, 
+find all update records
+associated with the aborting transaction, extract the before-image
+from each, and write the before-image to the table file.  Use
+<code>raf.seek()</code> to move around in the log file, and 
+<code>raf.readInt()</code> etc.  to
+examine it. Use <code>readPageData()</code> to read each of the before- and
+after-images.  You can use the map <code>tidToFirstLogRecord</code> (which maps
+from a transaction id to an offset in the heap file) to determine
+where to start reading the log file for a particular transaction.
+You will need to make sure that you discard any page from the buffer
+pool whose before-image you write back to the table file.
+
+<p> As you develop your code, you may find the <code>Logfile.print()</code> 
+method useful for displaying the current contents of the log.
+
+
+<div class="exercise"><b>Exercise 1: LogFile.rollback()</b>
+
+  <p>
+  Implement LogFile.rollback().
+
+  <p>
+  After completing this exercise, you should be able to pass the 
+  TestAbort and
+  TestAbortCommitInterleaved
+  sub-tests of the LogTest system test.
+
+</div>
+
+<p>
+<h2>3. Recovery</h2>
+
+If the database crashes and then reboots, <code>LogFile.recover()</code> 
+will be
+called before any new transactions start. Your implementation should:
+
+<ol>
+
+<li>Read the last checkpoint, if any.
+
+<li>Scan forward from the checkpoint (or start of log file, if no checkpoint)
+to build the set of loser
+transactions. Re-do updates during this pass. You can safely start
+re-do at the checkpoint because <code>LogFile.logCheckpoint()</code> 
+flushes all dirty buffers to disk.
+
+<li>Un-do the updates of loser transactions.
+
+</ol>
+
+<div class="exercise"><b>Exercise 2: LogFile.recover()</b>
+<p>
+
+  <p>
+  Implement LogFile.recover().
+
+  <p>
+  After completing this exercise, you should be able to pass all
+  of the LogTest system test.
+  
+
+</div>
+
+<h2>4. Logistics </h2>
+
+You must submit your code (see below) as well as a short (1 page, maximum)
+writeup describing your approach.  This writeup should:
+
+<ul>
+
+<li> Describe any design decisions you made, including anything that was
+difficult or unexpected.
+
+  <li> Discuss and justify any changes you made outside of LogFile.java.
+
+</ul>
+
+<h3>4.1. Collaboration </h3>
+
+This lab should be manageable for a single person, but if you prefer
+to work with a partner, this is also OK.  Larger groups are not allowed.
+Please indicate clearly who you worked with, if anyone, on your writeup.  
+
+<h3>4.2. Submitting your assignment </h3>
+
+<p>
+To submit your code, please create a <tt>6.830-lab5.tar.gz</tt> tarball (such
+that, untarred, it creates a <tt>6.830-lab3/src/simpledb</tt> directory with
+your code) and submit it for the Lab 5 assigment on the  <a
+href="https://stellar.mit.edu/S/course/6/sp12/6.830/homework/">Stellar Site Homework Section</a>.
+You may submit your code multiple times; we will use the latest version you
+submit that arrives before the deadline (before 11:59pm on the due date).  If
+applicable, please indicate your partner in your writeup.  Please also submit
+your individual writeup as a PDF or plain text file (.txt).  
+Please do not submit a .doc or .docx.
+
+<a name="bugs"></a>
+<h3>4.3. Submitting a bug </h3>
+
+<p>SimpleDB is a relatively complex piece of code. It is very possible you are going to find bugs, inconsistencies, and bad, outdated, or incorrect documentation, etc.</p>
+
+<p>We ask you, therefore, to do this lab with an adventurous mindset.  Don't get mad if something is not clear, or even wrong; rather, try to figure it out
+yourself or send us a friendly email. 
+Please submit (friendly!) bug reports to <a
+href="mailto:6830-staff@mit.edu">6830-staff@mit.edu</a>.
+When you do, please try to include:
+
+<ul>
+
+<li>A description of the bug.
+
+<li>A <tt>.java</tt> file we can drop in the <code>src/simpledb/test</code>
+directory, compile, and run.
+
+<li>A <tt>.txt</tt> file with the data that reproduces the bug.  We should be
+able to convert it to a <tt>.dat</tt> file using <code>PageEncoder</code>.
+
+</ul>
+
+You can also post on the class page on Piazza if you feel you have run into a bug.
+
+<a name="grading"></a>
+<h3>4.4 Grading </h3>
+
+<p>50% of your grade will be based on whether or not your code passes the
+system test suite we will run over it. These tests will be a superset
+of the tests we have provided; the tests we provide are to help guide
+your implementation, but they do not define correctness.
+Before handing in your code, you should
+make sure produces no errors (passes all of the tests) from both
+<tt>ant test</tt> and <tt>ant systemtest</tt>.</p>
+
+<p>
+
+<b>Important:</b> Before testing, we will replace your <tt>build.xml</tt>,
+<tt>HeapFileEncoder.java</tt>, and the entire contents of the
+<tt>test/</tt> directory with our version of these files.  This
+means you cannot change the format of the <tt>.dat</tt> files!  You should
+also be careful when changing APIs and make sure that any changes you make 
+are backwards compatible. In other words, we will
+untar your tarball, replace the files mentioned above, compile it, and then
+grade it. It will look roughly like this:
+
+<pre>
+$ gunzip 6.830-lab5.tar.gz
+$ tar xvf 6.830-lab5.tar
+$ cd 6.830-lab5
+[replace build.xml, HeapFileEncoder.java and test]
+$ ant test
+$ ant systemtest
+[additional tests]
+</pre>
+
+If any of these commands fail, we'll be unhappy, and, therefore, so will your grade.
+
+<p>
+
+An additional 50% of your grade will be based on the quality of your
+writeup and our subjective evaluation of your code.
+
+<p>
+
+We've had a lot of fun designing this assignment, and we hope you enjoy
+hacking on it!
+<p>
+<!-- Created: Sat Sep 17 12:26:46 EDT 2005 -->
+<!-- hhmts start -->
+Last modified: Wed May 2 22:30:00 EDT 2012
+<!-- hhmts end -->
+
+  </body>
+
+
+</html>
+
+<!--  LocalWords:  SimpleDB HeapFile dat TupleDesc SeqScan getNext ss tid int
+ -->
+<!--  LocalWords:  NoSuchElementException printStackTrace TransactionId typeAr
+ -->
+<!--  LocalWords:  runTest FilterTest simpledb src java txt JavaDoc's HeapPage
+ -->
+<!--  LocalWords:  BufferPool endian DbIterator JoinPredicate getPage tableid
+ -->
+<!--  LocalWords:  MIN HashMap insertTuple deleteTuple walkthrough PageEncoder
+ -->
+<!--  LocalWords:  TransactionAbortedException recap Ramakrishnan multithreaded
+ -->
+<!--  LocalWords:  transactionComplete html com href TransactionID untarred Nov
+ -->
+<!--  LocalWords:  TransactionAborted TransactionTest flushAllPages cvzf cd sec
+ -->
+<!--  LocalWords:  wget xvzf LogTest systemtest runsystest Dtest junit Testcase
+ -->
+<!--  LocalWords:  Testsuite TestFlushAll TestCommitCrash TestAbort LogFile un
+ -->
+<!--  LocalWords:  raf readInt readPageData TestAbortCommitInterleaved PDF xml
+ -->
+<!--  LocalWords:  logCheckpoint APIs untar gunzip xvf flushPage writePage pid
+ -->
+<!--  LocalWords:  isDirty getLogFile logWrite getBeforeImage setBeforeImage
+ -->
+<!--  LocalWords:  LOGFILENAME logfile IOException oldData getPageData tableId
+ -->
+<!--  LocalWords:  HeapPageId pgNo logXactionBegin logAbort getBufferPool
+ -->
+<!--  LocalWords:  flushPages logCommit PatchTest
+ -->
